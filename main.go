@@ -2,7 +2,7 @@ package main
 
 import (
 	"github/njfanxun/istio-falcon/cmd"
-	"github/njfanxun/istio-falcon/internal/boot"
+	"github/njfanxun/istio-falcon/pkg/boot"
 	"os"
 
 	"github.com/sirupsen/logrus"

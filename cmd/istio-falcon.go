@@ -7,5 +7,7 @@ func InitCommand() *cobra.Command {
 		Use:   "istio-falcon",
 		Short: "Monitor istio-ingressgateway Gateway, auto expose VirtualService port",
 	}
+	command.AddCommand(InitVersionCommand())
+	command.AddCommand(InitManagerCommand())
 	return command
 }
