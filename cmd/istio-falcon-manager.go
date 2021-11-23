@@ -43,5 +43,8 @@ func InitManagerCommand() *cobra.Command {
 	command.PersistentFlags().String(falcon.Namespace, "istio-system", "istio-ingressgateway service namespace")
 	_ = viper.BindPFlag(falcon.Namespace, command.PersistentFlags().Lookup(falcon.Namespace))
 
+	command.PersistentFlags().StringSlice(falcon.DefaultPorts, []string{"80", "443", "15021"}, "istio-ingressgateway service opened ports by default")
+	_ = viper.BindPFlag(falcon.DefaultPorts, command.PersistentFlags().Lookup(falcon.DefaultPorts))
+
 	return command
 }

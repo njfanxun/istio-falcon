@@ -3,16 +3,17 @@ package falcon
 import (
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/spf13/cast"
 	"github.com/spf13/viper"
 )
 
 const (
-	KubeConfig  = "kubeConfig"
-	ServiceName = "serviceName"
-	Namespace   = "namespace"
+	KubeConfig   = "kubeConfig"
+	ServiceName  = "serviceName"
+	Namespace    = "namespace"
+	DefaultPorts = "ports"
 )
 
 type Config struct {
@@ -20,14 +21,14 @@ type Config struct {
 	IngressGatewayService string
 	Namespace             string
 	Ignore                string
+	DefaultPorts          map[int32]string
 }
 
 func ParseEnvOrArgs() (*Config, error) {
-	c := &Config{}
-	c.KubeConfigPath = viper.GetString(KubeConfig)
-	if c.KubeConfigPath == "" {
-		c.KubeConfigPath = os.Getenv(strings.ToUpper(KubeConfig))
+	c := &Config{
+		DefaultPorts: make(map[int32]string),
 	}
+	c.KubeConfigPath = viper.GetString(KubeConfig)
 	if c.KubeConfigPath == "" {
 		adminConfigPath := "/etc/kubernetes/admin.conf"
 		homeConfigPath := filepath.Join(os.Getenv("HOME"), ".kube", "config")
@@ -44,21 +45,20 @@ func ParseEnvOrArgs() (*Config, error) {
 
 	c.IngressGatewayService = viper.GetString(ServiceName)
 	if c.IngressGatewayService == "" {
-		c.IngressGatewayService = os.Getenv(strings.ToUpper(ServiceName))
-		if c.IngressGatewayService == "" {
-			c.IngressGatewayService = "istio-ingressgateway"
-		}
+		c.IngressGatewayService = "istio-ingressgateway"
 	}
 
 	c.Namespace = viper.GetString(Namespace)
 	if c.Namespace == "" {
-		c.Namespace = os.Getenv(strings.ToUpper(Namespace))
-		if c.Namespace == "" {
-			c.Namespace = "istio-system"
-		}
+		c.Namespace = "istio-system"
 	}
 
 	c.Ignore = "istio-falcon.io/ignore"
+
+	ps := viper.GetStringSlice(DefaultPorts)
+	for _, p := range ps {
+		c.DefaultPorts[cast.ToInt32(p)] = p
+	}
 	return c, nil
 }
 
