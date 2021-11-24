@@ -6,6 +6,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/cast"
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 	v1 "k8s.io/api/core/v1"
 	errors2 "k8s.io/apimachinery/pkg/api/errors"
@@ -35,16 +36,10 @@ func (m *Manager) RunWatcher(ctx context.Context) error {
 	logrus.Infoln("Beginning watching istio Gateway in all namespaces")
 	for event := range ch {
 		switch event.Type {
-		case watch.Added:
-			gw, ok := event.Object.(*v1alpha3.Gateway)
-			if !ok {
-				logrus.Errorf("Unable to parse Gateway from watcher:%+v", event.Object)
+		case watch.Added, watch.Modified, watch.Deleted:
+			if IsGatewayEventObject(event) {
+				m.ReloadGateway(ctx)
 			}
-			m.addGateway(ctx, gw)
-		case watch.Modified:
-
-		case watch.Deleted:
-
 		case watch.Bookmark:
 		case watch.Error:
 			logrus.Error("Error attempting to watch Kubernetes Nodes")
@@ -61,43 +56,72 @@ func (m *Manager) RunWatcher(ctx context.Context) error {
 	return nil
 }
 
-func (m *Manager) addGateway(ctx context.Context, gw *v1alpha3.Gateway) {
+func (m *Manager) ReloadGateway(ctx context.Context) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	if m.isIgnoreGateway(gw) {
-		logrus.Infof("ignore gateway[%s] to expose port", gw.Name)
+	// 修改的情况复杂，重新请求计算
+	gateways, err := m.istioClientset.NetworkingV1alpha3().Gateways(metaV1.NamespaceAll).List(ctx, metaV1.ListOptions{})
+	if err != nil {
+		logrus.Errorf("list gateways error:%s", err.Error())
 		return
 	}
-	var addList []v1.ServicePort
-	for _, server := range gw.Spec.Servers {
-		if port := server.GetPort(); port != nil {
-			p := int32(port.GetNumber())
-			_, found := m.ingressServicePorts[p]
-			if !found {
-				name := strings.ToLower(gw.GetName() + "-" + port.GetName() + "-" + port.GetProtocol())
-				m.ingressServicePorts[p] = name
-				addList = append(addList, v1.ServicePort{
-					Name:     name,
-					Protocol: v1.ProtocolTCP,
-					Port:     p,
-				})
-
+	var gatewayPorts map[int32]*v1.ServicePort = make(map[int32]*v1.ServicePort)
+	for _, gw := range gateways.Items {
+		if !m.isIgnoreGateway(&gw) {
+			for _, server := range gw.Spec.Servers {
+				if port := server.GetPort(); port != nil {
+					p := int32(port.GetNumber())
+					name := strings.ToLower(gw.GetName() + "-" + port.GetName() + "-" + port.GetProtocol())
+					gatewayPorts[p] = &v1.ServicePort{
+						Name:     name,
+						Protocol: v1.ProtocolTCP,
+						Port:     p,
+					}
+				}
 			}
 		}
-
 	}
-	if len(addList) > 0 {
-		err := m.UpdateService(ctx)
-		if err != nil {
-			logrus.Errorf("update istio-ingressgateway service error:%s", err.Error())
-			return
-		}
-		for _, port := range addList {
-			logrus.Info(" istio-ingressgateway service expose %d port", port.Port)
-		}
+	// 按照现在的gateway重新生成ingressService
+	newIngressService := m.ingressService.DeepCopy()
+	newIngressService.Spec.Ports = newIngressService.Spec.Ports[:0] // 清空ports
 
-	} else {
-		logrus.Infof("Gateway[%s] has been expose port", gw.Name)
+	for _, port := range m.ingressService.Spec.Ports {
+		if m.isDefaultPort(port.Port) {
+			newIngressService.Spec.Ports = append(newIngressService.Spec.Ports, port)
+			continue
+		}
+		// 已经开放的gateway，继续保留
+		_, found := gatewayPorts[port.Port]
+		if found {
+			delete(gatewayPorts, port.Port)
+			newIngressService.Spec.Ports = append(newIngressService.Spec.Ports, port)
+		}
+	}
+	for _, port := range gatewayPorts {
+		if !m.isDefaultPort(port.Port) {
+			newIngressService.Spec.Ports = append(newIngressService.Spec.Ports, *port)
+		}
+	}
+	err = m.UpdateService(ctx, newIngressService)
+	if err != nil {
+		logrus.Errorf("Update istio-ingressgateway service error:%s", err.Error())
 	}
 
+}
+
+func IsGatewayEventObject(event watch.Event) bool {
+
+	gw, ok := event.Object.(*v1alpha3.Gateway)
+	if !ok {
+		logrus.Errorf("Unable to parse Gateway from watcher:%+v", event.Object)
+		return false
+	}
+	var ps []string
+	for _, server := range gw.Spec.Servers {
+		if port := server.GetPort(); port != nil {
+			ps = append(ps, cast.ToString(port.GetNumber()))
+		}
+	}
+	logrus.Infof("%s Gateway[%s] -- %s", event.Type, gw.Name, strings.Join(ps, ","))
+	return true
 }
