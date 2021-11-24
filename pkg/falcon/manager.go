@@ -3,21 +3,17 @@ package falcon
 import (
 	"context"
 	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/Rican7/retry"
 	"github.com/Rican7/retry/strategy"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sync/errgroup"
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 	"istio.io/client-go/pkg/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/watch"
 )
 
@@ -37,7 +33,7 @@ func NewManager(c *Config) (*Manager, error) {
 		signalChan: make(chan os.Signal, 1),
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", c.KubeConfigPath)
+	config, err := NewRestConfig(c.KubeConfigPath, c.InCluster)
 	if err != nil {
 		return nil, err
 	}
@@ -60,27 +56,15 @@ func (m *Manager) Start() {
 	err := m.InitIngressService()
 	if err != nil {
 		logrus.Error(err)
+		return
 	}
-	g, ctx := errgroup.WithContext(context.Background())
-	g.Go(func() error {
-		return m.RunWatcher(ctx)
-	})
+	m.StartCluster()
 
-	signal.Notify(m.signalChan,
-		syscall.SIGHUP,
-		syscall.SIGINT,
-		syscall.SIGTERM,
-		syscall.SIGQUIT,
-		syscall.SIGKILL,
-	)
-	select {
-	case <-m.signalChan:
-		m.GracefulShutdown()
-	}
 }
 
 // UpdateService /** @Description: 更新k8s service */
 func (m *Manager) UpdateService(ctx context.Context, service *v1.Service) error {
+	logrus.Info("will update service")
 	svc, err := m.k8sClientset.CoreV1().Services(service.Namespace).Update(ctx, service, metaV1.UpdateOptions{})
 	if err != nil {
 		return err
@@ -128,9 +112,9 @@ func (m *Manager) isDefaultPort(p int32) bool {
 }
 
 func (m *Manager) GracefulShutdown() {
-	close(m.signalChan)
-	if m.retryWatcher != nil {
-		m.retryWatcher.Stop()
-	}
-	logrus.Info("close istio-falcon manager...")
+	// close(m.signalChan)
+	// if m.retryWatcher != nil {
+	// 	m.retryWatcher.Stop()
+	// }
+	logrus.Info("Closed Istio-Falcon manager...")
 }

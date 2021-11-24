@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cockroachdb/errors"
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
 )
@@ -14,6 +13,7 @@ const (
 	ServiceName  = "serviceName"
 	Namespace    = "namespace"
 	DefaultPorts = "ports"
+	InCluster    = "inCluster"
 )
 
 type Config struct {
@@ -22,6 +22,7 @@ type Config struct {
 	Namespace             string
 	Ignore                string
 	DefaultPorts          map[int32]string
+	InCluster             bool
 }
 
 func ParseEnvOrArgs() (*Config, error) {
@@ -38,7 +39,6 @@ func ParseEnvOrArgs() (*Config, error) {
 		case fileExists(adminConfigPath):
 			c.KubeConfigPath = adminConfigPath
 		default:
-			return nil, errors.Errorf("could not found kubeconfig file")
 		}
 
 	}
@@ -59,6 +59,9 @@ func ParseEnvOrArgs() (*Config, error) {
 	for _, p := range ps {
 		c.DefaultPorts[cast.ToInt32(p)] = p
 	}
+
+	c.InCluster = viper.GetBool(InCluster)
+
 	return c, nil
 }
 

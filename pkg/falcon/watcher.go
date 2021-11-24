@@ -17,6 +17,7 @@ import (
 )
 
 func (m *Manager) RunWatcher(ctx context.Context) error {
+
 	var err error
 	m.retryWatcher, err = watchTools.NewRetryWatcher("1", &cache.ListWatch{
 		WatchFunc: func(options metaV1.ListOptions) (watch.Interface, error) {
@@ -102,6 +103,7 @@ func (m *Manager) ReloadGateway(ctx context.Context) {
 			newIngressService.Spec.Ports = append(newIngressService.Spec.Ports, *port)
 		}
 	}
+
 	err = m.UpdateService(ctx, newIngressService)
 	if err != nil {
 		logrus.Errorf("Update istio-ingressgateway service error:%s", err.Error())
