@@ -10,9 +10,9 @@ require (
 	github.com/spf13/cast v1.3.1
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/viper v1.8.1
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	istio.io/client-go v1.12.0
 	k8s.io/api v0.22.4
 	k8s.io/apimachinery v0.22.4
 	k8s.io/client-go v0.22.4
+	k8s.io/klog/v2 v2.9.0
 )

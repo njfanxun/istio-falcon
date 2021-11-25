@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
@@ -16,26 +15,22 @@ import (
 	watchTools "k8s.io/client-go/tools/watch"
 )
 
-func (m *Manager) RunWatcher(ctx context.Context) error {
-
+func (m *Manager) InitWatcher() error {
 	var err error
-	m.retryWatcher, err = watchTools.NewRetryWatcher("1", &cache.ListWatch{
+	m.rw, err = watchTools.NewRetryWatcher(m.ingressService.ResourceVersion, &cache.ListWatch{
 		WatchFunc: func(options metaV1.ListOptions) (watch.Interface, error) {
-			return m.istioClientset.NetworkingV1alpha3().Gateways(v1.NamespaceAll).Watch(context.Background(), metaV1.ListOptions{
-				TypeMeta: metaV1.TypeMeta{
-					Kind:       "Gateway",
-					APIVersion: "networking.istio.io/v1alpha3",
-				},
-			})
+			return m.istioClientset.NetworkingV1alpha3().Gateways(v1.NamespaceAll).Watch(context.Background(), metaV1.ListOptions{})
 		},
 	})
-
 	if err != nil {
-		return errors.Errorf("creating gateway watcher error:%s", err.Error())
+		return err
 	}
-	ch := m.retryWatcher.ResultChan()
-	logrus.Infoln("Beginning watching istio Gateway in all namespaces")
-	for event := range ch {
+	return nil
+}
+
+func (m *Manager) Run(ctx context.Context) {
+	logrus.Infoln("Beginning watch istio-Gateway in all namespaces")
+	for event := range m.rw.ResultChan() {
 		switch event.Type {
 		case watch.Added, watch.Modified, watch.Deleted:
 			if IsGatewayEventObject(event) {
@@ -54,61 +49,9 @@ func (m *Manager) RunWatcher(ctx context.Context) error {
 			logrus.Errorf("%v", status)
 		}
 	}
-	return nil
 }
-
-func (m *Manager) ReloadGateway(ctx context.Context) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	// 修改的情况复杂，重新请求计算
-	gateways, err := m.istioClientset.NetworkingV1alpha3().Gateways(metaV1.NamespaceAll).List(ctx, metaV1.ListOptions{})
-	if err != nil {
-		logrus.Errorf("list gateways error:%s", err.Error())
-		return
-	}
-	var gatewayPorts map[int32]*v1.ServicePort = make(map[int32]*v1.ServicePort)
-	for _, gw := range gateways.Items {
-		if !m.isIgnoreGateway(&gw) {
-			for _, server := range gw.Spec.Servers {
-				if port := server.GetPort(); port != nil {
-					p := int32(port.GetNumber())
-					name := strings.ToLower(gw.GetName() + "-" + port.GetName() + "-" + port.GetProtocol())
-					gatewayPorts[p] = &v1.ServicePort{
-						Name:     name,
-						Protocol: v1.ProtocolTCP,
-						Port:     p,
-					}
-				}
-			}
-		}
-	}
-	// 按照现在的gateway重新生成ingressService
-	newIngressService := m.ingressService.DeepCopy()
-	newIngressService.Spec.Ports = newIngressService.Spec.Ports[:0] // 清空ports
-
-	for _, port := range m.ingressService.Spec.Ports {
-		if m.isDefaultPort(port.Port) {
-			newIngressService.Spec.Ports = append(newIngressService.Spec.Ports, port)
-			continue
-		}
-		// 已经开放的gateway，继续保留
-		_, found := gatewayPorts[port.Port]
-		if found {
-			delete(gatewayPorts, port.Port)
-			newIngressService.Spec.Ports = append(newIngressService.Spec.Ports, port)
-		}
-	}
-	for _, port := range gatewayPorts {
-		if !m.isDefaultPort(port.Port) {
-			newIngressService.Spec.Ports = append(newIngressService.Spec.Ports, *port)
-		}
-	}
-
-	err = m.UpdateService(ctx, newIngressService)
-	if err != nil {
-		logrus.Errorf("Update istio-ingressgateway service error:%s", err.Error())
-	}
-
+func (m *Manager) Stop() {
+	m.rw.Stop()
 }
 
 func IsGatewayEventObject(event watch.Event) bool {

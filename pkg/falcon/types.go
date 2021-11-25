@@ -6,23 +6,28 @@ import (
 
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
+	"k8s.io/apimachinery/pkg/util/uuid"
 )
 
 const (
-	KubeConfig   = "kubeConfig"
-	ServiceName  = "serviceName"
-	Namespace    = "namespace"
-	DefaultPorts = "ports"
-	InCluster    = "inCluster"
+	KubeConfig       = "kube-config"
+	ServiceName      = "service-name"
+	ServiceNamespace = "service-namespace"
+	Namespace        = "namespace"
+	DefaultPorts     = "default-ports"
+	InCluster        = "in-cluster"
+	PodName          = "POD_NAME"
 )
 
 type Config struct {
 	KubeConfigPath        string
 	IngressGatewayService string
+	ServiceNamespace      string
 	Namespace             string
 	Ignore                string
 	DefaultPorts          map[int32]string
 	InCluster             bool
+	PodName               string
 }
 
 func ParseEnvOrArgs() (*Config, error) {
@@ -48,9 +53,14 @@ func ParseEnvOrArgs() (*Config, error) {
 		c.IngressGatewayService = "istio-ingressgateway"
 	}
 
+	c.ServiceNamespace = viper.GetString(ServiceNamespace)
+	if c.ServiceNamespace == "" {
+		c.ServiceNamespace = "istio-system"
+	}
+
 	c.Namespace = viper.GetString(Namespace)
 	if c.Namespace == "" {
-		c.Namespace = "istio-system"
+		c.Namespace = "kube-system"
 	}
 
 	c.Ignore = "istio-falcon.io/ignore"
@@ -61,6 +71,12 @@ func ParseEnvOrArgs() (*Config, error) {
 	}
 
 	c.InCluster = viper.GetBool(InCluster)
+
+	c.PodName = os.Getenv(PodName)
+	if c.PodName == "" {
+		c.PodName = string(uuid.NewUUID())
+
+	}
 
 	return c, nil
 }
