@@ -46,7 +46,7 @@ func InitManagerCommand() *cobra.Command {
 	command.PersistentFlags().StringSlice(falcon.DefaultPorts, []string{"80", "443", "15021"}, "istio-ingressgateway service opened ports by default")
 	_ = viper.BindPFlag(falcon.DefaultPorts, command.PersistentFlags().Lookup(falcon.DefaultPorts))
 
-	command.PersistentFlags().Bool(falcon.InCluster, false, "Use the inCluster token to authenticate to Kubernetes")
+	command.PersistentFlags().Bool(falcon.InCluster, true, "Use the inCluster token to authenticate to Kubernetes")
 	_ = viper.BindPFlag(falcon.InCluster, command.PersistentFlags().Lookup(falcon.InCluster))
 
 	command.PersistentFlags().String(falcon.Namespace, "kube-system", "istio-falcon pod run in namespace")
