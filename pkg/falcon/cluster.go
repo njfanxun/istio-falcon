@@ -55,10 +55,15 @@ func (m *Manager) StartCluster() error {
 		RetryPeriod:   2 * time.Second,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				m.Run(ctx)
+				err := m.InitWatcher()
+				if err != nil {
+					logrus.Fatalf("created gateway watch error:%s", err.Error())
+					return
+				}
+				m.RunWatcher(ctx)
 			},
 			OnStoppedLeading: func() {
-				m.Stop()
+				m.ReleaseWatcher()
 
 			},
 			OnNewLeader: func(identity string) {

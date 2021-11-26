@@ -28,7 +28,7 @@ func (m *Manager) InitWatcher() error {
 	return nil
 }
 
-func (m *Manager) Run(ctx context.Context) {
+func (m *Manager) RunWatcher(ctx context.Context) {
 	logrus.Infoln("Beginning watch istio-Gateway in all namespaces")
 	for event := range m.rw.ResultChan() {
 		switch event.Type {
@@ -49,9 +49,13 @@ func (m *Manager) Run(ctx context.Context) {
 			logrus.Errorf("%v", status)
 		}
 	}
+
 }
-func (m *Manager) Stop() {
-	m.rw.Stop()
+func (m *Manager) ReleaseWatcher() {
+	if m.rw != nil {
+		m.rw.Stop()
+		m.rw = nil
+	}
 }
 
 func IsGatewayEventObject(event watch.Event) bool {

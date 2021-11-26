@@ -14,7 +14,7 @@ const (
 	ServiceName      = "service-name"
 	ServiceNamespace = "service-namespace"
 	Namespace        = "namespace"
-	DefaultPorts     = "default-ports"
+	DefaultPorts     = "ports"
 	InCluster        = "in-cluster"
 	PodName          = "POD_NAME"
 )
@@ -71,7 +71,6 @@ func ParseEnvOrArgs() (*Config, error) {
 	}
 
 	c.InCluster = viper.GetBool(InCluster)
-
 	c.PodName = os.Getenv(PodName)
 	if c.PodName == "" {
 		c.PodName = string(uuid.NewUUID())

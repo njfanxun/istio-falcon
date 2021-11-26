@@ -67,14 +67,7 @@ func (m *Manager) Start() {
 
 	logrus.Info("Finished initialize istio-ingressgateway service")
 
-	err := m.InitWatcher()
-	if err != nil {
-		logrus.Errorf("Creating Gateway watcher error:%s", err.Error())
-		return
-	}
-	logrus.Info("Finished initialize Gateway Resource watcher")
-
-	err = m.StartCluster()
+	err := m.StartCluster()
 	if err != nil {
 		logrus.Error(err)
 	}
