@@ -1,56 +1,94 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
-	"github/njfanxun/istio-falcon/pkg/falcon"
+	"time"
+
+	"github.com/njfanxun/istio-falcon/apis"
+	"github.com/njfanxun/istio-falcon/options"
+	"github.com/njfanxun/istio-falcon/pkg/controllers/falcon"
 
 	"github.com/common-nighthawk/go-figure"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+	istioClient "istio.io/client-go/pkg/clientset/versioned"
+	istioInformers "istio.io/client-go/pkg/informers/externalversions"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilErrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 )
 
+const defaultReSync = 600 * time.Second
+
 func InitManagerCommand() *cobra.Command {
+	var configFile string
 	var command = &cobra.Command{
 		Use:   "mgr",
-		Short: "start manager for monitoring istio-ingressgateway",
+		Short: "start k8s controller-manager for monitoring istio-ingressgateway",
 
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			figure.NewColorFigure("Istio Falcon", "", "green", true).
 				Print()
 			fmt.Println()
-			config, err := falcon.ParseEnvOrArgs()
+			cfg, err := options.TryLoadFromDisk(configFile)
 			if err != nil {
-				logrus.Errorf("parse args error:%s", err.Error())
-				return
+				return err
+			}
+			if errs := cfg.Validate(); len(errs) != 0 {
+				return utilErrors.NewAggregate(errs)
 			}
 
-			mgr, err := falcon.NewManager(config)
-			if err != nil {
-				logrus.Errorf("kubeconfig can not connect k8s cluster:%s", err.Error())
-				return
-			}
-			mgr.Start()
-
+			return Run(cfg, signals.SetupSignalHandler())
 		},
+		SilenceUsage: true,
 	}
-	command.PersistentFlags().String(falcon.KubeConfig, "", "k8s cluster kubeconfig file path")
-	_ = viper.BindPFlag(falcon.KubeConfig, command.PersistentFlags().Lookup(falcon.KubeConfig))
-
-	command.PersistentFlags().String(falcon.ServiceName, "istio-ingressgateway", "istio-ingressgateway service name")
-	_ = viper.BindPFlag(falcon.ServiceName, command.PersistentFlags().Lookup(falcon.ServiceName))
-
-	command.PersistentFlags().String(falcon.ServiceNamespace, "istio-system", "istio-ingressgateway service namespace")
-	_ = viper.BindPFlag(falcon.ServiceNamespace, command.PersistentFlags().Lookup(falcon.ServiceNamespace))
-
-	command.PersistentFlags().StringSlice(falcon.DefaultPorts, []string{"80", "443", "15021"}, "istio-ingressgateway service opened ports by default")
-	_ = viper.BindPFlag(falcon.DefaultPorts, command.PersistentFlags().Lookup(falcon.DefaultPorts))
-
-	command.PersistentFlags().Bool(falcon.InCluster, true, "Use the inCluster token to authenticate to Kubernetes")
-	_ = viper.BindPFlag(falcon.InCluster, command.PersistentFlags().Lookup(falcon.InCluster))
-
-	command.PersistentFlags().String(falcon.Namespace, "kube-system", "istio-falcon pod run in namespace")
-	_ = viper.BindPFlag(falcon.Namespace, command.PersistentFlags().Lookup(falcon.Namespace))
-
+	fs := command.Flags()
+	fs.StringVarP(&configFile, "config", "c", "/etc/falcon/config.yaml", "config file path")
 	return command
+}
+func Run(cfg *options.Config, ctx context.Context) error {
+	mgrOptions := manager.Options{
+		LeaderElection:                cfg.ManagerOptions.LeaderElection,
+		LeaderElectionNamespace:       cfg.ManagerOptions.LeaderElectionNamespace,
+		LeaderElectionID:              cfg.ManagerOptions.LeaderElectionID,
+		LeaderElectionReleaseOnCancel: true,
+		LeaseDuration:                 &cfg.ManagerOptions.LeaseDuration,
+		RenewDeadline:                 &cfg.ManagerOptions.RenewDeadline,
+		RetryPeriod:                   &cfg.ManagerOptions.RetryPeriod,
+	}
+	config, err := clientcmd.BuildConfigFromFlags("", cfg.KubernetesOptions.KubeConfig)
+	if err != nil {
+		return err
+	}
+	config.QPS = cfg.KubernetesOptions.QPS
+	config.Burst = cfg.KubernetesOptions.Burst
+	var mgr manager.Manager
+	mgr, err = manager.New(config, mgrOptions)
+	if err != nil {
+		return err
+	}
+	err = apis.AddToScheme(mgr.GetScheme())
+	if err != nil {
+		return err
+	}
+
+	metav1.AddToGroupVersion(mgr.GetScheme(), metav1.SchemeGroupVersion)
+
+	istio := istioClient.NewForConfigOrDie(config)
+	informerFactory := istioInformers.NewSharedInformerFactory(istio, defaultReSync)
+
+	falconReconciler := falcon.NewFalconController(mgr.GetClient(), informerFactory, cfg.FalconOptions)
+	if err := mgr.Add(falconReconciler); err != nil {
+		return err
+	}
+
+	informerFactory.Start(ctx.Done())
+	err = mgr.Start(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
+
 }

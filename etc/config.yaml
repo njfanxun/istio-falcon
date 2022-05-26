@@ -1,0 +1,14 @@
+falcon:
+  namespace: istio-system
+  name: istio-ingressgateway
+  ports: [80,443,15021]
+  ignores: networking.istio.io/gateway-open
+  
+manager:
+  leaseDuration: 30s
+  renewDeadline: 15s
+  retryPeriod: 5s
+  leaderElection: true
+  leaderElectionNamespace: istio-system
+  leaderElectionID: falcon-controller-manager-leader-election
+

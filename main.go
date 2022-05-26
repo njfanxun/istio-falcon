@@ -1,24 +1,17 @@
 package main
 
 import (
-	"github/njfanxun/istio-falcon/cmd"
-	"github/njfanxun/istio-falcon/pkg/boot"
+	"math/rand"
 	"os"
+	"time"
 
-	"github.com/sirupsen/logrus"
+	"github.com/njfanxun/istio-falcon/cmd"
 )
 
 func main() {
-	boot.InitBoot()
-	defer func() {
-		if err := recover(); err != nil {
-			logrus.Errorf("%+v", err)
-			os.Exit(-1)
-		}
-	}()
+	rand.Seed(time.Now().UTC().UnixNano())
 	command := cmd.InitCommand()
-	err := command.Execute()
-	if err != nil {
-		panic(err)
+	if err := command.Execute(); err != nil {
+		os.Exit(255)
 	}
 }
