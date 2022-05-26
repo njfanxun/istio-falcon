@@ -13,7 +13,4 @@ yaml file in manifest dir.
 kubectl apply -f istio-falcon.yaml
 ```
 
-## Run
-istio-falcon mgr --config /etc/config.yaml
-
 
