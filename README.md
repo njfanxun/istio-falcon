@@ -14,12 +14,6 @@ kubectl apply -f istio-falcon.yaml
 ```
 
 ## Run
-istio-falcon mgr
-- --in-cluster                 Use the inCluster token to authenticate to Kubernetes (default true)
-- --kube-config string         k8s cluster kubeconfig file path
-- --namespace string           istio-falcon pod run in namespace (default "kube-system")
-- --ports strings              istio-ingressgateway service opened ports by default (default [80,443,15021])
-- --service-name string        istio-ingressgateway service name (default "istio-ingressgateway")
-- --service-namespace string   istio-ingressgateway service namespace (default "istio-system")
+istio-falcon mgr --config /etc/config.yaml
 
 
