@@ -43,6 +43,26 @@ subjects:
     name: istio-falcon
     namespace: istio-system
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falcon-config
+  namespace: istio-system
+data:
+  falcon-config.yaml: |
+    falcon:
+      namespace: istio-system
+      name: istio-ingressgateway
+      ports: [80,443,15021]
+      ignores: networking.istio.io/gateway-open
+    manager:
+      leaseDuration: 30s
+      renewDeadline: 15s
+      retryPeriod: 5s
+      leaderElection: true
+      leaderElectionNamespace: istio-system
+      leaderElectionID: falcon-controller-manager-leader-election
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -73,17 +93,25 @@ spec:
           imagePullPolicy: IfNotPresent
           args:
             - mgr
-          env:
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
+            - '-c'
+            - /app/etc/falcon-config.yaml
+          volumeMounts:
+            - name: falcon-config
+              mountPath: /app/etc
           securityContext:
             capabilities:
               add:
                 - NET_ADMIN
                 - NET_RAW
                 - SYS_TIME
+      volumes:
+        - name: falcon-config
+          configMap:
+            name: falcon-config
+            items:
+              - key: falcon-config.yaml
+                path: falcon-config.yaml
+            defaultMode: 420
       serviceAccountName: istio-falcon
       tolerations:
         - effect: NoSchedule
