@@ -31,7 +31,7 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-IMG ?= istio-falcon:${VERSION}
+IMG ?= hub.sudytech.cn/library/istio-falcon:${VERSION}
 
 .PHONY: docker-build
 docker-build: Dockerfile

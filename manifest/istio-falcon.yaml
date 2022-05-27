@@ -89,7 +89,7 @@ spec:
                     operator: Exists
       containers:
         - name: istio-falcon
-          image: njfanxun/istio-falcon:latest
+          image: hub.sudytech.cn/library/istio-falcon:v1.0.0
           imagePullPolicy: IfNotPresent
           args:
             - mgr

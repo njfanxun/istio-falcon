@@ -31,5 +31,4 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 WORKDIR /app
 COPY --from=GO_BUILD /go/src/falcon /app/
-COPY --from=GO_BUILD /go/src/isitio-falcon/etc /app/etc
 ENTRYPOINT ["./falcon"]
