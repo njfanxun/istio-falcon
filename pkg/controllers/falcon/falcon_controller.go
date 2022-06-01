@@ -3,13 +3,13 @@ package falcon
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/njfanxun/istio-falcon/options"
 	"github.com/njfanxun/istio-falcon/pkg/utils/logger"
-
-	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"github.com/spf13/cast"
@@ -120,12 +120,19 @@ func (f *FalconController) processIngressGatewayService() error {
 			if p := server.GetPort(); p != nil {
 				if f.IsEffectivePort(p.GetNumber()) {
 					port := cast.ToInt32(p.GetNumber())
+					protocol := strings.ToLower(p.GetProtocol())
 					name, ok := gatewayPortMaps[port]
 					if !ok {
-						gatewayPortMaps[port] = fmt.Sprintf("%s-%d", strings.ToLower(gw.Name), port)
+						gatewayPortMaps[port] = fmt.Sprintf("%s-%d", protocol, port)
 					} else {
-						gatewayPortMaps[port] = fmt.Sprintf("%s-%s-%d", name, strings.ToLower(gw.Name), port)
+						if !strings.Contains(name, fmt.Sprintf("%s-", protocol)) {
+							gatewayPortMaps[port] = fmt.Sprintf("%s-%s", protocol, name)
+						}
 					}
+					if len(gatewayPortMaps[port]) > 15 {
+						gatewayPortMaps[port] = gatewayPortMaps[port][0:14]
+					}
+
 				}
 			}
 		}
@@ -136,11 +143,14 @@ func (f *FalconController) processIngressGatewayService() error {
 		Namespace: f.Options.IstioNamespace,
 		Name:      f.Options.IngressgatewayName,
 	}, &currentService)
+
 	if err != nil {
 		f.Logger.Error(err, "not found ingress gateway service")
 		return client.IgnoreNotFound(err)
 	}
+
 	updateService := currentService.DeepCopy()
+
 	// 清空待更新的ports数组
 	updateService.Spec.Ports = updateService.Spec.Ports[:0]
 	var reports sets.String = sets.NewString()
@@ -178,12 +188,15 @@ func (f *FalconController) processIngressGatewayService() error {
 	if reports.Len() == 0 {
 		return nil
 	}
-	err = f.Client.Update(context.Background(), updateService)
-	if err != nil {
-		return err
-	}
-	for _, s := range reports.List() {
-		f.Logger.Info(s)
+
+	if !reflect.DeepEqual(updateService.Spec.Ports, currentService.Spec.Ports) {
+		err = f.Client.Update(context.Background(), updateService, &client.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+		for _, s := range reports.List() {
+			f.Logger.Info(s)
+		}
 	}
 
 	return nil

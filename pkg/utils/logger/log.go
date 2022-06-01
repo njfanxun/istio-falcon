@@ -10,7 +10,7 @@ import (
 func Logger(names ...string) logr.Logger {
 	config := zap.NewProductionConfig()
 
-	config.DisableCaller = true
+	config.DisableCaller = false
 	config.DisableStacktrace = true
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	config.EncoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
